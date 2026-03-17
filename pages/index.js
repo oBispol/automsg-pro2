@@ -571,9 +571,15 @@ export default function AutoMsgPro() {
           }
         }
         
+        // Remove o 55 do início para ficar no formato brasileiro
+        let phoneDisplay = item.phone;
+        if (phoneDisplay.startsWith('55') && phoneDisplay.length > 10) {
+          phoneDisplay = phoneDisplay.substring(2);
+        }
+        
         leads.push({
           nome: nome || `Lead ${leads.length + 1}`,
-          telefone: item.phone,
+          telefone: phoneDisplay,
           instagram: instagram
         });
       });
@@ -722,7 +728,15 @@ export default function AutoMsgPro() {
 
   const formatPhone = (phone) => {
     let nums = phone.toString().replace(/\D/g, '');
-    if (nums.length < 12 && nums.length > 0) {
+    // Se já começa com 55, mantém
+    if (nums.startsWith('55')) {
+      return nums;
+    }
+    // Se começa com 0 (como 011982471823), remove o 0 e adiciona 55
+    if (nums.startsWith('0')) {
+      nums = '55' + nums.substring(1);
+    } else {
+      // Se não tem 55 nem começa com 0, adiciona 55
       nums = '55' + nums;
     }
     return nums;
