@@ -447,6 +447,14 @@ export default function AutoMsgPro() {
   const logRef = useRef(null);
 
   const [historico, setHistorico] = useState([]);
+  
+  // Auto collect states
+  const [autoSegmento, setAutoSegmento] = useState('');
+  const [autoCidade, setAutoCidade] = useState('');
+  const [autoMaxResults, setAutoMaxResults] = useState(15);
+  const [isAutoCollecting, setIsAutoCollecting] = useState(false);
+  const [autoCollectedCount, setAutoCollectedCount] = useState(0);
+  const [autoCollectStatus, setAutoCollectStatus] = useState('');
 
   useEffect(() => {
     const savedUser = localStorage.getItem('automsg_user');
@@ -492,6 +500,61 @@ export default function AutoMsgPro() {
     localStorage.removeItem('automsg_user');
     setUser(null);
     setActiveTab('coletor');
+  };
+
+  const startAutoCollect = async () => {
+    if (!autoSegmento || !autoCidade) {
+      alert('Preencha segmento e cidade');
+      return;
+    }
+    
+    setIsAutoCollecting(true);
+    setAutoCollectedCount(0);
+    setAutoCollectStatus('Iniciando coleta...');
+    
+    try {
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          segmento: autoSegmento,
+          cidade: autoCidade,
+          maxResults: autoMaxResults
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (data.error) {
+        setAutoCollectStatus(`Erro: ${data.error}`);
+      } else {
+        // Adicionar leads encontrados
+        const newLeads = data.leads.map(lead => ({
+          nome: lead.nome,
+          telefone: lead.telefone || 'sem telefone',
+          instagram: ''
+        }));
+        
+        const allLeads = [...leads, ...newLeads];
+        // Deduplicar
+        const seen = new Set();
+        const unique = allLeads.filter(lead => {
+          const phone = lead.telefone?.replace(/\D/g, '') || '';
+          if (!phone || seen.has(phone)) return false;
+          seen.add(phone);
+          return true;
+        });
+        
+        setLeads(unique);
+        localStorage.setItem('automsg_leads', JSON.stringify(unique));
+        setAutoCollectStatus(`✅ Coletados ${data.leads.length} leads de ${autoCidade}!`);
+        setAutoCollectedCount(data.leads.length);
+      }
+    } catch (err) {
+      setAutoCollectStatus(`Erro: ${err.message}`);
+    }
+    
+    setIsAutoCollecting(false);
   };
 
   const extractWithAI = async () => {
@@ -993,6 +1056,59 @@ export default function AutoMsgPro() {
         
         {activeTab === 'coletor' && (
           <div>
+            {/* Coleta Automática */}
+            <div style={styles.card}>
+              <div style={styles.cardTitle}>🤖 Coleta Automática do Maps</div>
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px'}}>
+                <div>
+                  <label style={styles.label}>Segmento</label>
+                  <input
+                    style={styles.input}
+                    value={autoSegmento}
+                    onChange={(e) => setAutoSegmento(e.target.value)}
+                    placeholder="Ex: nails designer"
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>Cidade</label>
+                  <input
+                    style={styles.input}
+                    value={autoCidade}
+                    onChange={(e) => setAutoCidade(e.target.value)}
+                    placeholder="Ex: São Paulo, SP"
+                  />
+                </div>
+              </div>
+              <div style={{marginBottom: '12px'}}>
+                <label style={styles.label}>Quantos leads?</label>
+                <input
+                  type="range"
+                  min="15"
+                  max="75"
+                  step="15"
+                  value={autoMaxResults}
+                  onChange={(e) => setAutoMaxResults(parseInt(e.target.value))}
+                  style={{width: '100%'}}
+                />
+                <div style={{textAlign: 'center', color: COLORS.muted, fontSize: '13px'}}>
+                  {autoMaxResults} resultados
+                </div>
+              </div>
+              <button
+                style={{...styles.btn, ...styles.btnPrimary, width: '100%'}}
+                onClick={startAutoCollect}
+                disabled={isAutoCollecting || !autoSegmento || !autoCidade}
+              >
+                {isAutoCollecting ? `⏳ Coletando... (${autoCollectedCount}/${autoMaxResults})` : '🚀 Iniciar Coleta Automática'}
+              </button>
+              {autoCollectStatus && (
+                <div style={{marginTop: '12px', padding: '10px', backgroundColor: COLORS.s2, borderRadius: '8px', fontSize: '13px', color: COLORS.green}}>
+                  {autoCollectStatus}
+                </div>
+              )}
+            </div>
+
+            {/* Coleta Manual */}
             <div style={styles.card}>
               <div style={styles.cardTitle}>📥 Colar dados do Google Maps</div>
               <textarea
