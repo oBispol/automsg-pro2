@@ -509,93 +509,74 @@ export default function AutoMsgPro() {
       const leads = [];
       const usedPhones = new Set();
       
-      // Regex para telefone brasileiro
-      const phoneRegex = /(?:(?:\+|00)55|0)?(?:\(?\d{2}\)?[\s.-]?)?\d{4,5}[\s.-]?\d{4}/g;
+      // Regex para telefone brasileiro (mais abrangente)
+      const phoneRegex = /(?:(?:\+|00)?55|0)?(?:\(?\d{2}\)?[\s.\-]?)?\d{4,5}[\s.\-]?\d{4}/g;
       // Regex para Instagram
       const instaRegex = /(?:instagram\.com\/|@)([a-zA-Z0-9._]+)/i;
-      // Regex para linhas que parecem ser nomes (primeira linha do bloco)
-      const nameLineRegex = /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]{2,50}$/;
       
-      // Dividir em blocos (separados por linhas vazias ou endereços)
-      const blocks = text.split(/\n\s*\n/);
-      
-      blocks.forEach((block, blockIdx) => {
-        const blockLines = block.split('\n').map(l => l.trim()).filter(l => l);
-        
-        let nome = '';
-        let telefone = '';
-        let instagram = '';
-        
-        blockLines.forEach((line, lineIdx) => {
-          // Detectar telefone
-          const phoneMatch = line.match(phoneRegex);
-          if (phoneMatch) {
-            let phone = phoneMatch[0].replace(/\D/g, '');
-            if (phone.length >= 10) {
-              if (!phone.startsWith('55')) {
-                phone = '55' + phone;
-              }
-              telefone = phone;
+      // Procurar todas as linhas que contêm telefone
+      const linesWithPhone = [];
+      lines.forEach((line, idx) => {
+        const phoneMatch = line.match(phoneRegex);
+        if (phoneMatch) {
+          let phone = phoneMatch[0].replace(/\D/g, '');
+          // Aceita telefone com 10+ dígitos
+          if (phone.length >= 10) {
+            if (!phone.startsWith('55') && !phone.startsWith('0')) {
+              phone = '55' + phone.replace(/^0+/, '');
+            } else if (phone.startsWith('0')) {
+              phone = '55' + phone.substring(1);
             }
+            linesWithPhone.push({
+              lineIdx: idx,
+              line: line.trim(),
+              phone: phone
+            });
           }
-          
-          // Detectar Instagram
-          const instaMatch = line.match(instaRegex);
-          if (instaMatch) {
-            instagram = '@' + instaMatch[1].replace('@', '');
-          }
-          
-          // Primeira linha que não é telefone/endereço = nome
-          if (lineIdx === 0 && !nome && !line.match(/\d{5,}/) && line.length > 2 && line.length < 60) {
-            const cleanName = line.replace(/[^\w\sÀ-ÿ&-]/g, '').trim();
-            if (cleanName.length > 2 && !cleanName.toLowerCase().includes('http')) {
-              nome = cleanName;
-            }
-          }
-        });
-        
-        // Se encontrou telefone e não é duplicado
-        if (telefone && !usedPhones.has(telefone)) {
-          usedPhones.add(telefone);
-          leads.push({
-            nome: nome || `Lead ${leads.length + 1}`,
-            telefone: telefone,
-            instagram: instagram
-          });
         }
       });
       
-      // Se não encontrou blocos, tenta extrair de forma linear
-      if (leads.length === 0) {
-        const allPhones = [];
-        let match;
-        while ((match = phoneRegex.exec(text)) !== null) {
-          let phone = match[0].replace(/\D/g, '');
-          if (phone.length >= 10) {
-            if (!phone.startsWith('55')) {
-              phone = '55' + phone;
-            }
-            if (!usedPhones.has(phone)) {
-              allPhones.push(phone);
-              usedPhones.add(phone);
+      // Para cada telefone encontrado, procurar nome e instagram
+      linesWithPhone.forEach((item, idx) => {
+        if (usedPhones.has(item.phone)) return;
+        usedPhones.add(item.phone);
+        
+        let nome = '';
+        let instagram = '';
+        
+        // Procurar nome: linhas próximas que não têm números longos
+        for (let i = Math.max(0, item.lineIdx - 3); i <= Math.min(lines.length - 1, item.lineIdx + 2); i++) {
+          const line = lines[i].trim();
+          
+          // Detectar Instagram
+          const instaMatch = line.match(instaRegex);
+          if (instaMatch && !instagram) {
+            instagram = '@' + instaMatch[1].replace('@', '');
+            continue;
+          }
+          
+          // Se a linha não tem telefone mas parece nome (letras, sem números longos)
+          if (i !== item.lineIdx && line.length > 2 && line.length < 60) {
+            const hasLongNumber = line.match(/\d{6,}/);
+            const hasAt = line.includes('@');
+            const hasHttp = line.toLowerCase().includes('http');
+            
+            if (!hasLongNumber && !hasAt && !hasHttp) {
+              // Parece ser nome
+              const cleanName = line.replace(/[^\w\sÀ-ÿ&\-.,]/g, '').trim();
+              if (cleanName.length > 2 && !nome) {
+                nome = cleanName;
+              }
             }
           }
         }
         
-        // Pegar nomes das linhas que parecem nomes
-        const potentialNames = lines
-          .map(l => l.trim())
-          .filter(l => nameLineRegex.test(l) && l.length > 3 && l.length < 50)
-          .slice(0, allPhones.length);
-        
-        allPhones.forEach((phone, idx) => {
-          leads.push({
-            nome: potentialNames[idx] || `Lead ${idx + 1}`,
-            telefone: phone,
-            instagram: ''
-          });
+        leads.push({
+          nome: nome || `Lead ${leads.length + 1}`,
+          telefone: item.phone,
+          instagram: instagram
         });
-      }
+      });
       
       return leads;
     };
